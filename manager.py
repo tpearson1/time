@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 # Time Management Program
 
 import config_utils as cfgu
@@ -10,7 +12,9 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GObject
 
-LOG_FILE = "data/log.txt"
+PROGRAM_DIR = os.path.dirname(os.path.realpath(__file__))
+DATA_DIR = PROGRAM_DIR + "/data"
+LOG_FILE = DATA_DIR + "/log.txt"
 
 DISPLAY_WEEK = 0
 DISPLAY_MONTH = 1
@@ -97,14 +101,14 @@ def read_log():
 
 
 def create_data_dir():
-    if not os.path.exists("data"):
-        os.makedirs("data")
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
 
 
 class Main:
     def __init__(self):
         self.builder = Gtk.Builder()
-        self.builder.add_from_file("interface.glade")
+        self.builder.add_from_file(PROGRAM_DIR + "/interface.glade")
 
         handlers = {
             "on-destroy":
