@@ -28,6 +28,8 @@ def chosen_event_text():
         return "No chosen event"
 
     days = chosen.days_till_event()
+    if days == 0:
+        return "Today: " + chosen.description
     return "{} day{} from now: {}".format(days, "" if days == 1 else "s",
                                           chosen.description)
 
@@ -148,13 +150,21 @@ class Main:
         create_data_dir()
 
         self.log = read_log()
-        if len(self.log) == 0:
+
+        entry_today = self.log_entry_for_today_present()
+
+        if entry_today:
+            message = self.log[-2].for_tomorrow
+        if len(self.log) == 0 or (entry_today and len(self.log) == 1):
             # New to the app
             message = \
                 "First day using this software - You will be able to give "\
                 "yourself tomorrow's task(s) at the end of today's work"
         else:
-            message = self.log[-1].for_tomorrow
+            if entry_today:
+                message = self.log[-2].for_tomorrow
+            else:
+                message = self.log[-1].for_tomorrow
 
         message_for_day = self.builder.get_object("message-for-day")
         message_for_day.set_text(message)

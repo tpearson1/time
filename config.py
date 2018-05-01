@@ -31,8 +31,11 @@ def pick_event():
 
     events.sort(key=lambda e: e.occur_date)
 
-    if len(events) == 0 or events[0].happened():
-        # No relevant events
-        return None
+    # Find the closest event that hasn't happened yet
+    for e in events:
+        if not e.happened():
+            return e
 
-    return events[0]
+    # No events coming up
+    return None
+
