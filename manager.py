@@ -293,6 +293,7 @@ class Main:
                                    overdue, accomplished, for_tomorrow))
             f = open(LOG_FILE, "w")
             f.writelines(lines)
+            f.write("\n")
             f.close()
         else:
             write_to_log(
