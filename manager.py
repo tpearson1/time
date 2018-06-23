@@ -35,10 +35,20 @@ def chosen_event_text():
 
 
 def duration_from_str(duration):
-    # Get as a date-time
-    dt = datetime.strptime(duration, "%H:%M:%S")
-    # Take the hours, minutes and seconds to construct a timedelta
-    return cfgu.make_duration(dt.hour, dt.minute, dt.second)
+    # Split by colon character
+    elems = duration.split(":")
+    try:
+        if len(elems) != 3:
+            raise ValueError
+
+        hours = int(elems[0])
+        minutes = int(elems[1])
+        seconds = int(elems[2])
+        return cfgu.make_duration(hours, minutes, seconds)
+
+    except ValueError:
+        print("Invalid time duration in log file")
+        return cfgu.make_duration(0, 0, 0)
 
 
 def longer_than(duration1, duration2):
@@ -223,6 +233,8 @@ class Main:
         self.currently_counting = False
 
     def continue_counting(self):
+        if self.currently_counting:
+            return
         self.currently_counting = True
         GObject.timeout_add_seconds(1, self.update_times)
 
@@ -288,12 +300,18 @@ class Main:
             f = open(LOG_FILE)
             lines = f.readlines()
             f.close()
-            lines[-1] = str(
-                LogEntry.for_today(cfg.expected_work_time_today(), time_worked,
-                                   overdue, accomplished, for_tomorrow))
+
+            entry = LogEntry.from_str(lines[-1])
+            entry.time_worked = time_worked
+            entry.overdue = overdue
+            if accomplished != "":
+                entry.accomplished = accomplished
+            if for_tomorrow != "":
+                entry.for_tomorrow = for_tomorrow
+            lines[-1] = str(entry)
+
             f = open(LOG_FILE, "w")
             f.writelines(lines)
-            f.write("\n")
             f.close()
         else:
             write_to_log(
