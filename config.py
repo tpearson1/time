@@ -18,16 +18,26 @@ def expected_work_time_today():
     if today == SUNDAY:
         return make_duration(0)
     return make_duration(2, 30)
+def add_yearly_event(events, month, day, desc):
+    today = datetime.today()
+    # Two events added because if the event already happened this year, the
+    # next time is next year
+    events.append(Event(date(today.year, month, day), desc))
+    events.append(Event(date(today.year + 1, month, day), desc))
+
+def this_year_event(month, day, desc):
+    today = datetime.today()
+    return Event(date(today.year, month, day), desc)
+
+def add_event_this_year(events, month, day, desc):
+    events.append(this_year_event(month, day, desc))
 
 
 # This function picks the most recent event in the below list
 def pick_event():
-    events = [
-        # An event takes a date and a description string. The format for
-        # specifying a date is YEAR-MONTH-DAY.
-        Event(date(2019, 1, 1), "New Years Day"),
-        Event(date(2018, 12, 25), "Christmas Day")
-    ]
+    events = []
+    add_yearly_event(events, 1, 1, "New Years Day")
+    add_yearly_event(events, 12, 25, "Christmas Day")
 
     events.sort(key=lambda e: e.occur_date)
 
