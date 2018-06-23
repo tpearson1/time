@@ -6,6 +6,11 @@ import config_utils as cfgu
 import config as cfg
 import os.path
 
+import parts.timer as timer
+import parts.duration as duration
+import parts.logentry as logentry
+import parts.log as log
+
 from datetime import datetime, date, timedelta
 
 import gi
@@ -21,6 +26,9 @@ DISPLAY_MONTH = 1
 DISPLAY_YEAR = 2
 DISPLAY_ALL = 3
 
+FIRST_DAY_WORK_MESSAGE = "First day using this software - You will be able to give "
+"yourself tomorrow's task(s) at the end of today's work"
+
 
 def chosen_event_text():
     chosen = cfg.pick_event()
@@ -34,84 +42,6 @@ def chosen_event_text():
                                           chosen.description)
 
 
-def duration_from_str(duration):
-    # Split by colon character
-    elems = duration.split(":")
-    try:
-        if len(elems) != 3:
-            raise ValueError
-
-        hours = int(elems[0])
-        minutes = int(elems[1])
-        seconds = int(elems[2])
-        return cfgu.make_duration(hours, minutes, seconds)
-
-    except ValueError:
-        print("Invalid time duration in log file")
-        return cfgu.make_duration(0, 0, 0)
-
-
-def longer_than(duration1, duration2):
-    return (duration1 - duration2).total_seconds() > 0
-
-
-class LogEntry:
-    def for_today(expected_time_working, time_worked, overdue, accomplished,
-                  for_tomorrow):
-        return LogEntry(date.today(), expected_time_working, time_worked,
-                        overdue, accomplished, for_tomorrow)
-
-    def from_str(text):
-        results = text.split("\t")
-        return LogEntry(
-            datetime.strptime(results[0], "%Y-%m-%d").date(),
-            duration_from_str(results[1]), duration_from_str(results[2]),
-            duration_from_str(results[3]), results[4], results[5])
-
-    def __init__(self, entry_date, expected_time_working, time_worked, overdue,
-                 accomplished, for_tomorrow):
-        self.entry_date = entry_date
-        self.expected_time_working = expected_time_working
-        self.time_worked = time_worked
-        self.overdue = overdue
-        self.accomplished = accomplished
-        self.for_tomorrow = for_tomorrow
-
-    def __str__(self):
-        return "{}\t{}\t{}\t{}\t{}\t{}".format(
-            self.entry_date, self.expected_time_working, self.time_worked,
-            self.overdue, self.accomplished, self.for_tomorrow)
-
-
-def write_to_log(log_entry):
-    f = None
-    if not os.path.exists(LOG_FILE):
-        f = open(LOG_FILE, "w")
-        f.write("Date\tExpected Time Working\tTime Worked\t"
-                "Overdue\tAccomplished\tFor Tomorrow\n")
-    else:
-        f = open(LOG_FILE, "a")
-
-    f.write(str(log_entry) + "\n")
-    f.close()
-
-
-def read_log():
-    try:
-        f = open(LOG_FILE)
-        # Ignore first line which states the columns
-        lines = f.readlines()[1:]
-
-        entries = []
-        for entry in lines:
-            if entry != "":
-                entries.append(LogEntry.from_str(entry))
-        return entries
-    except IOError:
-        # File didn't exist - empty log
-        return []
-
-
 def create_data_dir():
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
@@ -122,13 +52,17 @@ class Main:
         self.builder = Gtk.Builder()
         self.builder.add_from_file(PROGRAM_DIR + "/interface.glade")
 
+        self.timer = timer.Timer(self.update_times)
+        create_data_dir()
+        self.log = log.Log(LOG_FILE)
+
         handlers = {
             "on-destroy":
             self.shutdown_app,
             "start-counting":
-            lambda _: self.continue_counting(),
+            lambda _: self.start_timer(),
             "stop-counting":
-            lambda _: self.stop_counting(),
+            lambda _: self.stop_timer(),
             "finish-work":
             lambda _: self.finish_work(),
             "build-week-display":
@@ -153,55 +87,67 @@ class Main:
         self.log_list_store = self.builder.get_object("work-log-data")
         self.build_log_display(DISPLAY_WEEK)
 
+        self.setup_work_input_boxes()
+
+    def start_timer(self):
+        self.timer.start()
+        # Prevent clicking the button multiple times
+        self.start_timer_button.set_sensitive(False)
+        self.stop_timer_button.set_sensitive(True)
+
+    def stop_timer(self):
+        self.timer.stop()
+        # Prevent clicking the button multiple times
+        self.stop_timer_button.set_sensitive(False)
+        self.start_timer_button.set_sensitive(True)
+
+    def setup_work_input_boxes(self):
+        self.accomplished_input_box = self.builder.get_object("work-today")
+        self.for_tomorrow_input_box = self.builder.get_object("work-tomorrow")
+
+        today = self.log.entry_for_today()
+        if today is None:
+            return
+        self.accomplished_input_box.set_text(today.accomplished)
+        self.for_tomorrow_input_box.set_text(today.for_tomorrow)
+
+    def work_message(self):
+        prev = self.log.entry_before_today()
+        if prev is None:
+            return FIRST_DAY_WORK_MESSAGE
+        return prev.for_tomorrow
+
     def get_event_and_message(self):
         next_event_label = self.builder.get_object("next-event")
         next_event_label.set_text(chosen_event_text())
 
-        create_data_dir()
-
-        self.log = read_log()
-
-        entry_today = self.log_entry_for_today_present()
-
-        if entry_today:
-            message = self.log[-2].for_tomorrow
-        if len(self.log) == 0 or (entry_today and len(self.log) == 1):
-            # New to the app
-            message = \
-                "First day using this software - You will be able to give "\
-                "yourself tomorrow's task(s) at the end of today's work"
-        else:
-            if entry_today:
-                message = self.log[-2].for_tomorrow
-            else:
-                message = self.log[-1].for_tomorrow
-
         message_for_day = self.builder.get_object("message-for-day")
-        message_for_day.set_text(message)
+        message_for_day.set_text(self.work_message())
 
     def get_overdue(self):
-        if len(self.log) == 0:
+        latest = self.log.latest_entry()
+
+        if latest is None:
             # No overdue time from an empty log
             return cfgu.make_duration(0)
 
-        last_entry = self.log[-1]
-        if self.log_entry_for_today_present():
+        if self.log.entry_for_today_present():
             # Overdue time carries over from previous days
-            return last_entry.overdue
+            return latest.overdue
         else:
             unworked_from_earlier = \
-                last_entry.expected_time_working - last_entry.time_worked
+                latest.expected_time_working - latest.time_worked
             if unworked_from_earlier.total_seconds() > 0:
-                return last_entry.overdue + unworked_from_earlier
-            return last_entry.overdue
+                return latest.overdue + unworked_from_earlier
+            return latest.overdue
 
-    def remaining_time_to_work_today(self):
-        if len(self.log) == 0:
+    def remaining_work_time_today(self):
+        if self.log.is_empty():
             return cfg.expected_work_time_today()
 
-        last_entry = self.log[-1]
-        if self.log_entry_for_today_present():
-            unworked = last_entry.expected_time_working - last_entry.time_worked
+        today = self.log.entry_for_today()
+        if today is not None:
+            unworked = today.expected_time_working - today.time_worked
             if unworked.total_seconds() > 0:
                 return unworked
             else:
@@ -217,31 +163,21 @@ class Main:
         self.time_for_today_label = self.builder.get_object("time-for-today")
         self.overdue_label = self.builder.get_object("overdue")
 
-        self.time_for_today = self.remaining_time_to_work_today()
+        self.start_timer_button = self.builder.get_object("start-timer")
+        self.stop_timer_button = self.builder.get_object("stop-timer")
+
+        # Should not be able to click stop unless the timer is running
+        self.stop_timer_button.set_sensitive(False)
+
+        self.time_for_today = self.remaining_work_time_today()
         self.time_for_today_secs = self.time_for_today.total_seconds()
 
-        self.overdue = self.get_overdue()
-        self.overdue_secs = self.overdue.total_seconds()
+        self.overdue_secs = self.get_overdue().total_seconds()
 
         self.time_worked_secs = 0
-
-        GObject.timeout_add_seconds(1, self.update_times)
-        self.stop_counting()
         self.set_times()
 
-    def stop_counting(self):
-        self.currently_counting = False
-
-    def continue_counting(self):
-        if self.currently_counting:
-            return
-        self.currently_counting = True
-        GObject.timeout_add_seconds(1, self.update_times)
-
     def update_times(self):
-        if not self.currently_counting:
-            return
-
         self.time_worked_secs += 1
 
         if self.time_for_today_secs > 0:
@@ -251,13 +187,10 @@ class Main:
         elif self.overdue_secs > 0:
             self.overdue_secs -= 1
             if self.overdue_secs == 0:
-                self.stop_counting()
+                self.timer.stop()
                 self.done_all_time()
-                self.set_times()
-                return
 
         self.set_times()
-        GObject.timeout_add_seconds(1, self.update_times)
 
     def get_time_remaining(self):
         return self.time_for_today_secs + self.overdue_secs
@@ -271,52 +204,35 @@ class Main:
     def done_time_for_today(self):
         message_text = "You have completed all of today's scheduled work time"
         if self.overdue_secs != 0:
-            message_text += ", but there is still overdue work for you"
+            message_text += ", but there is still overdue work to do"
         self.create_message_box(message_text)
 
     def done_all_time(self):
         self.create_message_box(
-            "You have completed all of your scheduled work time")
-
-    def log_entry_for_today_present(self):
-        if len(self.log) == 0:
-            return False
-        return self.log[-1].entry_date == date.today()
+            "You have completed all of today's scheduled work time")
 
     def finish_work(self):
         self.has_clicked_finish = True
-        self.stop_counting()
+        self.timer.stop()
 
         accomplished = self.builder.get_object("work-today").get_text()
         for_tomorrow = self.builder.get_object("work-tomorrow").get_text()
 
         time_worked = timedelta(seconds=self.time_worked_secs)
-        if self.log_entry_for_today_present():
-            # Add time done earlier today
-            time_worked += self.log[-1].time_worked
         overdue = timedelta(seconds=self.overdue_secs)
 
-        if self.log_entry_for_today_present():
-            f = open(LOG_FILE)
-            lines = f.readlines()
-            f.close()
-
-            entry = LogEntry.from_str(lines[-1])
-            entry.time_worked = time_worked
-            entry.overdue = overdue
-            if accomplished != "":
-                entry.accomplished = accomplished
-            if for_tomorrow != "":
-                entry.for_tomorrow = for_tomorrow
-            lines[-1] = str(entry)
-
-            f = open(LOG_FILE, "w")
-            f.writelines(lines)
-            f.close()
+        today = self.log.entry_for_today()
+        if today is not None:
+            today.time_worked += time_worked
+            today.overdue = overdue
+            today.accomplished = accomplished
+            today.for_tomorrow = for_tomorrow
+            self.log.push_entry(today)
         else:
-            write_to_log(
-                LogEntry.for_today(cfg.expected_work_time_today(), time_worked,
-                                   overdue, accomplished, for_tomorrow))
+            self.log.push_entry(
+                logentry.LogEntry.for_today(cfg.expected_work_time_today(),
+                                            time_worked, overdue, accomplished,
+                                            for_tomorrow))
 
     def set_times(self):
         self.time_remaining_label.set_text(
@@ -332,16 +248,16 @@ class Main:
 
     def build_log_display(self, period):
         self.log_list_store.clear()
-        for entry in self.log:
+        for entry in self.log.entries:
             entry_age = date.today() - entry.entry_date
             if period == DISPLAY_WEEK:
-                if longer_than(entry_age, timedelta(weeks=1)):
+                if duration.longer_than(entry_age, timedelta(weeks=1)):
                     continue
             if period == DISPLAY_MONTH:
-                if longer_than(entry_age, timedelta(days=30)):
+                if duration.longer_than(entry_age, timedelta(days=30)):
                     continue
             if period == DISPLAY_YEAR:
-                if longer_than(entry_age, timedelta(days=365)):
+                if duration.longer_than(entry_age, timedelta(days=365)):
                     continue
 
             self.log_list_store.append([
