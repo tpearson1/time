@@ -3,8 +3,7 @@ from . import logentry
 from datetime import date
 import os.path
 
-LOG_HEADER = "Date\tExpected Time Working\tTime Worked\t"
-"Overdue\tAccomplished\tFor Tomorrow\n"
+LOG_HEADER = "Date\tExpected Time Working\tTime Worked\tOverdue\tAccomplished\tFor Tomorrow\n"
 
 
 class Log:

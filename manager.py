@@ -26,8 +26,8 @@ DISPLAY_MONTH = 1
 DISPLAY_YEAR = 2
 DISPLAY_ALL = 3
 
-FIRST_DAY_WORK_MESSAGE = "First day using this software - You will be able to give "
-"yourself tomorrow's task(s) at the end of today's work"
+FIRST_DAY_WORK_MESSAGE = "First day using this software - You will be able to give \
+yourself tomorrow's task(s) at the end of today's work"
 
 
 def chosen_event_text():
