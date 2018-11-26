@@ -29,17 +29,23 @@ DISPLAY_ALL = 3
 FIRST_DAY_WORK_MESSAGE = "First day using this software - You will be able to give \
 yourself tomorrow's task(s) at the end of today's work"
 
-
-def chosen_event_text():
-    chosen = cfg.pick_event()
-    if chosen is None:
-        return "No chosen event"
-
+def chosen_event_text(chosen):
     days = chosen.days_till_event()
     if days == 0:
         return "Today: " + chosen.description
     return "{} day{} from now: {}".format(days, "" if days == 1 else "s",
                                           chosen.description)
+
+def chosen_events_text():
+    chosen = cfg.pick_event()
+    if chosen == []:
+        return "No chosen event"
+
+    result = ""
+    for event in chosen:
+        result += chosen_event_text(event) + '\n';
+    return result
+
 
 
 def create_data_dir():
@@ -119,7 +125,7 @@ class Main:
 
     def get_event_and_message(self):
         next_event_label = self.builder.get_object("next-event")
-        next_event_label.set_text(chosen_event_text())
+        next_event_label.set_text(chosen_events_text())
 
         message_for_day = self.builder.get_object("message-for-day")
         message_for_day.set_text(self.work_message())
@@ -182,34 +188,15 @@ class Main:
 
         if self.time_for_today_secs > 0:
             self.time_for_today_secs -= 1
-            if self.time_for_today_secs == 0:
-                self.done_time_for_today()
         elif self.overdue_secs > 0:
             self.overdue_secs -= 1
             if self.overdue_secs == 0:
                 self.timer.stop()
-                self.done_all_time()
 
         self.set_times()
 
     def get_time_remaining(self):
         return self.time_for_today_secs + self.overdue_secs
-
-    def create_message_box(self, text):
-        message = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.INFO,
-                                    Gtk.ButtonsType.CLOSE, text)
-        message.run()
-        message.destroy()
-
-    def done_time_for_today(self):
-        message_text = "You have completed all of today's scheduled work time"
-        if self.overdue_secs != 0:
-            message_text += ", but there is still overdue work to do"
-        self.create_message_box(message_text)
-
-    def done_all_time(self):
-        self.create_message_box(
-            "You have completed all of today's scheduled work time")
 
     def finish_work(self):
         self.has_clicked_finish = True

@@ -3,6 +3,8 @@
 
 from config_utils import *
 
+EVENT_DISPLAY_COUNT = 5
+
 
 # Example implementation which sets expected work time based on the weekday.
 # Please note that on the same day, this function should *always* return the
@@ -33,7 +35,7 @@ def add_event_this_year(events, month, day, desc):
     events.append(this_year_event(month, day, desc))
 
 
-# This function picks the most recent event in the below list
+# This function picks the most recent events in the below list
 def pick_event():
     events = []
     add_yearly_event(events, 1, 1, "New Years Day")
@@ -41,11 +43,11 @@ def pick_event():
 
     events.sort(key=lambda e: e.occur_date)
 
-    # Find the closest event that hasn't happened yet
-    for e in events:
-        if not e.happened():
-            return e
-
-    # No events coming up
-    return None
+    # Find the closest two events that hasn't happened yet
+    firstRelevant = 0
+    while firstRelevant < len(events):
+        if not events[firstRelevant].happened():
+            break
+        firstRelevant += 1
+    return events[firstRelevant:(firstRelevant + EVENT_DISPLAY_COUNT)]
 
